@@ -1,0 +1,524 @@
+# Code for the paper "Social practice and shared history, not learning biases, structure cross-cultural complexity in kinship systems"
+
+## Setting up
+
+```{r }
+try(setwd('~/Work/Bristol/RaczPassmoreJordan2018/'))
+
+library('dplyr') # to massage data
+library('itsadug') # to fit gams
+library('ggplot2') # for plots
+library('stringr') # strings
+# library('narnia')
+# library('FactoMineR') # for the PCA
+library('ggfortify') # for the PCA
+library('ggmap') # for map
+# library('ggmosaic') # for mosaic plot
+# library('vcd') # for mosaic plot
+# library('xtable') # for formatting tables
+library('knitr')
+library('reshape2') # for melting and casting
+library('RColorBrewer') # for colours
+
+d <- read.csv('ea_tidy_cousin_only.csv') %>% filter(!is.na(cousin_terms)) # see rpj2018_helper.r
+mapWorld <- map_data('world', wrap=c(-25,335), ylim=c(-55,75)) # pacific centered
+load('multiplot.Rfnc') # http://www.cookbook-r.com/Graphs/Multiple_graphs_on_one_page_(ggplot2)/
+
+formatCousinData <- function(d){
+# fix up factor levels
+d$cousin_terms <- factor(d$cousin_terms, levels = c('hawaiian','eskimo','iroquois','crow/omaha','sudanese/desc'))
+# d %>% select(cousin_terms,cousin_rank) %>% unique # bingo
+
+d$descent <- factor(d$descent, levels = c('patrilineal','matrilineal','bilateral_quasi','duo_ambi','mixed'))
+d$subsistence <- factor(d$subsistence, levels = c('int_agr','ext_agr','foraging','pastoralism'))
+
+# tidy labels for plots
+
+d$kinship <- str_extract(d$cousin_terms, '^.') %>% factor(levels = c('h','e','i','c','s'))
+d$lon2 <- ifelse(d$lon < -20, d$lon + 360, d$lon)
+d$descent_type <- NA
+d$descent_type <- ifelse(d$descent %in% c('patrilineal', 'matrilineal'), 'unilineal', d$descent_type)
+d$descent_type <- ifelse(d$descent %in% c('bilateral_quasi', 'duo_ambi'), 'symmetrical', d$descent_type)
+d$cousin__marriage <- NA
+d$cousin__marriage <- ifelse(d$cousin_marriage == 1, 'forbidden', d$cousin__marriage)
+d$cousin__marriage <- ifelse(d$cousin_marriage == 2, 'some 2nd', d$cousin__marriage)
+d$cousin__marriage <- ifelse(d$cousin_marriage == 3, 'some 1st', d$cousin__marriage)
+d$cousin__marriage <- ifelse(d$cousin_marriage == 4, 'all 1st', d$cousin__marriage)
+d$cousin__marriage <- factor(d$cousin__marriage, levels = c('forbidden', 'some 2nd', 'some 1st', 'all 1st'))
+d$subsistence_type <- ifelse(d$subsistence == 'pastoralism', 'pastoralists', 'others')
+d$subsistence_type <- factor(d$subsistence_type, levels = c('pastoralists', 'others'))
+
+return(d)
+}
+save(formatCousinData, file = "formatCousinData.Rfnc")
+
+d <- formatCousinData(d)
+
+# get the subset of the twelve biggest families for plots
+biggest_family <- d %>% filter(family!='') %>% group_by(family) %>% summarise(n = n()) %>% arrange(-n) %>% head(12) %>% pull(family)
+d_big <- d %>% filter(family %in% biggest_family)
+```
+
+## Map of the world: kinship systems x language family
+
+```{r }
+
+# take map of the world,
+# add labels for kinship types and colour for family in the 12 biggest families
+# remove axes (they are not interesting)
+# write a custom caption title and scale
+ggplot() + 
+  geom_polygon(data = mapWorld, aes(x=long, y = lat, group = group)) + 
+  geom_label(data = d_big, aes(x = lon2, y = lat, colour = family, label = kinship)) +
+  guides(colour = F) +
+  theme(axis.title.x=element_blank(), axis.text.x=element_blank(), axis.ticks=element_blank(), axis.title.y=element_blank(), axis.text.y=element_blank()) + 
+  labs(caption = '[h]awaiian, [e]skimo, [i]roquois, [c]row/omaha, [s]udanese/descriptive. twelve largest language families.') + 
+  scale_colour_manual(values = rainbow(12))# +
+  # ggtitle('kinship systems in D-PLACE')
+ggsave('figs/cousin_paper_text-kinfig.pdf', width = 12, height = 6)
+```
+
+## Three plots on kinship system x social factors
+
+```{r }
+
+popMiss <- d %>% filter(is.na(log_pop_size)) %>% nrow
+popMiss <- round((popMiss / nrow(d) * 100),2)
+comMiss <- d %>% filter(is.na(comm_size)) %>% nrow
+comMiss <- round((comMiss / nrow(d) * 100),2)
+
+# make plot for descent for 12 biggest families
+d_big_descent <- d_big %>% filter(!is.na(descent_type)) %>% droplevels
+
+# these three plots are similar: plot word, plot societies, use colour for variable, remove axes, set colours by hand, set caption by hand
+
+prac1 <- ggplot() + 
+  geom_polygon(data = mapWorld, aes(x=long, y = lat, group = group)) + 
+  geom_label(data = d_big_descent, aes(x = lon2, y = lat, colour = descent_type, label = kinship)) +
+  theme(axis.title.x=element_blank(), axis.text.x=element_blank(), axis.ticks=element_blank(), axis.title.y=element_blank(), axis.text.y=element_blank()) + 
+  scale_colour_manual(values = c('violetred','gold4')) + 
+  scale_fill_continuous(guide = guide_legend()) + 
+  theme(legend.position="top") + 
+  guides(colour = guide_legend(override.aes = list(size=11))) + 
+  labs(colour = 'descent type:', caption = '[h]awaiian, [e]skimo, [i]roquois, [c]row/omaha, [s]udanese/descriptive. twelve largest language families.')
+  
+d_big_cm <- d_big %>% filter(!is.na(cousin_marriage))
+
+prac2 <- ggplot() + 
+  geom_polygon(data = mapWorld, aes(x=long, y = lat, group = group)) + 
+  geom_label(data = d_big_cm, aes(x = lon2, y = lat, colour = cousin__marriage, label = kinship)) +
+  theme(axis.title.x=element_blank(), axis.text.x=element_blank(), axis.ticks=element_blank(), axis.title.y=element_blank(), axis.text.y=element_blank()) + theme(legend.position="top") + 
+  guides(colour = guide_legend(override.aes = list(size=11))) +
+  labs(colour = 'cousin marriage:', caption = '[h]awaiian, [e]skimo, [i]roquois, [c]row/omaha, [s]udanese/descriptive. twelve largest language families.') +
+   scale_colour_manual(values = c('olivedrab4','orange2','orangered3','orchid4'))
+
+d_big_subs <- d_big %>% filter(!is.na(subsistence))
+
+prac3 <- ggplot() + 
+  geom_polygon(data = mapWorld, aes(x=long, y = lat, group = group)) + 
+  geom_label(data = d_big_subs, aes(x = lon2, y = lat, colour = subsistence_type, label = kinship)) +
+  theme(axis.title.x=element_blank(), axis.text.x=element_blank(), axis.ticks=element_blank(), axis.title.y=element_blank(), axis.text.y=element_blank()) + theme(legend.position="top") + 
+  guides(colour = guide_legend(override.aes = list(size=11))) +
+  labs(colour = 'subsistence:', caption = '[h]awaiian, [e]skimo, [i]roquois, [c]row/omaha, [s]udanese/descriptive. twelve largest language families.') +
+   scale_colour_manual(values = c('goldenrod2','deeppink4'))
+
+
+print(multiplot(prac1,prac2,prac3, cols = 1))
+
+ggsave('figs/cousin_paper_text-pracfig.pdf', width=12, height=15)
+```
+
+## Missing values
+
+```{r }
+soc_size <- d %>% select(subsistence,settlement,comm_size,jurisdiction,jurisdiction_local,log_pop_size) %>% na.omit %>% nrow
+
+prac_size <- d %>% select(cousin_marriage,marriage,descent) %>% na.omit %>% nrow
+
+final_size <- d %>% select(jurisdiction_local,subsistence,cousin_marriage,descent) %>% na.omit %>% nrow
+```
+
+## Regression models
+
+### specifying
+
+```{r eval=F}
+# models
+
+# a model that estimates variance covered by language family and region
+
+# this is an ordered category model fit using mgcv. the category has five levels (h<e<i<c/o<s/d)
+g1 = gam(cousin_rank ~ 1 + s(region, bs='re') + s(family, bs='re'), family=ocat(R=5), data=d, link='identity', method='ML')
+
+save(g1,file='mods/g1gamm.rda')
+
+# we fit the corresponding model to see if g1 does anything
+g2 = gam(cousin_rank ~ 1, family=ocat(R=5), data=d, link='identity', method='ML')
+
+# compareML(g1,g2) # yes it does!
+
+# a model that uses social practice variables (model 2)
+
+d2 <- d %>% filter(!is.na(marriage),!is.na(cousin_marriage),!is.na(descent))
+
+f1 = gam(cousin_rank ~ 1
+                          + marriage
+                            + cousin_marriage
+                             + descent
+  + s(region, bs='re') + s(family, bs='re'), family=ocat(R=5), data=d2, link='identity', method='ML')
+
+f2 = gam(cousin_rank ~ 1
+                          # + marriage
+                            + cousin_marriage
+                             + descent
+  + s(region, bs='re') + s(family, bs='re'), family=ocat(R=5), data=d2, link='identity', method='ML')
+
+compareML(f2,f1)
+
+# marriage does nothing. "nothing" is our arbitrary cutoff of z<1.5 | z>-1.5
+# the model is re-fit w/o the predictor that does nothing (to test on a larger sample)
+
+d3 <- d %>% filter(!is.na(cousin_marriage),!is.na(descent))
+
+f2b = gam(cousin_rank ~ 1
+                          # + marriage
+                            + cousin_marriage
+                             + descent
+  + s(region, bs='re') + s(family, bs='re'), family=ocat(R=5), data=d3, link='identity', method='ML')
+
+save(f2b,file='mods/f2bgamm.rda')
+
+# a model that uses social complexity / size variables (model 1)
+
+d4 <- d %>% filter(!is.na(jurisdiction),!is.na(jurisdiction_local),!is.na(settlement),!is.na(subsistence),!is.na(comm_size),!is.na(log_pop_size))
+
+s1 = gam(cousin_rank ~ 1
+                      + comm_size
+                        + log_pop_size
+                          + jurisdiction
+                            + jurisdiction_local
+                             + settlement
+                               + subsistence
+  + s(region, bs='re') + s(family, bs='re'), family=ocat(R=5), data=d4, link='identity', method='ML')
+
+s2 = gam(cousin_rank ~ 1
+                      # + comm_size
+                        + log_pop_size
+                          + jurisdiction
+                            + jurisdiction_local
+                             + settlement
+                               + subsistence
+  + s(region, bs='re') + s(family, bs='re'), family=ocat(R=5), data=d4, link='identity', method='ML')
+
+# compareML(s1,s2)
+# comm_size does nothing
+
+d5 <- d %>% filter(!is.na(jurisdiction),!is.na(jurisdiction_local),!is.na(settlement),!is.na(subsistence),!is.na(log_pop_size))
+
+s2b = gam(cousin_rank ~ 1
+                      # + comm_size
+                        + log_pop_size
+                          + jurisdiction
+                            + jurisdiction_local
+                             + settlement
+                               + subsistence
+  + s(region, bs='re') + s(family, bs='re'), family=ocat(R=5), data=d5, link='identity', method='ML')
+
+s3 = gam(cousin_rank ~ 1
+                      # + comm_size
+                        # + log_pop_size
+                          + jurisdiction
+                            + jurisdiction_local
+                             + settlement
+                               + subsistence
+  + s(region, bs='re') + s(family, bs='re'), family=ocat(R=5), data=d5, link='identity', method='ML')
+
+# compareML(s2b,s3)
+# pop size does nothing
+
+d6 <- d %>% filter(!is.na(jurisdiction),!is.na(jurisdiction_local),!is.na(settlement),!is.na(subsistence))
+
+s3b = gam(cousin_rank ~ 1
+                      # + comm_size
+                        # + log_pop_size
+                          + jurisdiction
+                            + jurisdiction_local
+                             + settlement
+                               + subsistence
+  + s(region, bs='re') + s(family, bs='re'), family=ocat(R=5), data=d6, link='identity', method='ML')
+
+s4 = gam(cousin_rank ~ 1
+                      # + comm_size
+                        # + log_pop_size
+                          + jurisdiction
+                            + jurisdiction_local
+                             # + settlement
+                               + subsistence
+  + s(region, bs='re') + s(family, bs='re'), family=ocat(R=5), data=d6, link='identity', method='ML')
+
+# compareML(s3b,s4)
+# settlement does nothing
+
+d7 <- d %>% filter(!is.na(jurisdiction),!is.na(jurisdiction_local),!is.na(subsistence))
+
+s4b = gam(cousin_rank ~ 1
+                      # + comm_size
+                        # + log_pop_size
+                          + jurisdiction
+                            + jurisdiction_local
+                             # + settlement
+                               + subsistence
+  + s(region, bs='re') + s(family, bs='re'), family=ocat(R=5), data=d7, link='identity', method='ML')
+
+s5 = gam(cousin_rank ~ 1
+                      # + comm_size
+                        # + log_pop_size
+                          # + jurisdiction
+                            + jurisdiction_local
+                             # + settlement
+                               + subsistence
+  + s(region, bs='re') + s(family, bs='re'), family=ocat(R=5), data=d7, link='identity', method='ML')
+
+# compareML(s4b,s5)
+# jurisdiction does nothing
+
+d8 <- d %>% filter(!is.na(jurisdiction_local),!is.na(subsistence))
+
+s5b = gam(cousin_rank ~ 1
+                      # + comm_size
+                        # + log_pop_size
+                          # + jurisdiction
+                            + jurisdiction_local
+                             # + settlement
+                               + subsistence
+  + s(region, bs='re') + s(family, bs='re'), family=ocat(R=5), data=d8, link='identity', method='ML')
+
+s6 = gam(cousin_rank ~ 1
+                      # + comm_size
+                        # + log_pop_size
+                          # + jurisdiction
+                            # + jurisdiction_local
+                             # + settlement
+                               + subsistence
+  + s(region, bs='re') + s(family, bs='re'), family=ocat(R=5), data=d8, link='identity', method='ML')
+
+s7 = gam(cousin_rank ~ 1
+                      # + comm_size
+                        # + log_pop_size
+                          # + jurisdiction
+                            + jurisdiction_local
+                             # + settlement
+                               # + subsistence
+  + s(region, bs='re') + s(family, bs='re'), family=ocat(R=5), data=d8, link='identity', method='ML')
+
+
+# compareML(s5b,s6)
+# local jurisdiction does something, just about
+# compareML(s5b,s7)
+# subsistence does something
+
+save(s5b, file = 's5bgamm.rda')
+
+# we combine the two models into one big model.
+
+# we fit this on everyone in EA.
+
+d9 <- d %>% filter(!is.na(jurisdiction_local),!is.na(subsistence),!is.na(cousin_marriage),!is.na(descent))
+
+k1 = gam(cousin_rank ~ 1
+                        + jurisdiction_local
+                          + subsistence
+                            + cousin_marriage
+                              + descent
+  + s(region, bs='re') + s(family, bs='re'), family=ocat(R=5), data=d9, link='identity', method='ML')
+
+summary(k1)
+
+save(k1,file='mods/k1gamm.rda')
+
+# we fit this on non-IE societies
+
+d10 <- droplevels( subset( d9, family != 'Indo-European'))
+
+k2 = gam(cousin_rank ~ 1
+                        + jurisdiction_local
+                          + subsistence
+                            + cousin_marriage
+                              + descent
+  + s(region, bs='re') + s(family, bs='re'), family=ocat(R=5), data=d10, link='identity', method='ML')
+
+summary(k2)
+
+# we fit this on not - big societies
+
+d11 <- droplevels( subset(d9, log_pop_size < quantile(d$log_pop_size, 0.95, na.rm=T) ))
+
+k3 = gam(cousin_rank ~ 1
+                        + jurisdiction_local
+                          + subsistence
+                            + cousin_marriage
+                              + descent
+  + s(region, bs='re') + s(family, bs='re'), family=ocat(R=5), data=d11, link='identity', method='ML')
+
+summary(k3)
+
+# here is a model without Hawaiian kinship (for methodologial consistency's sake)
+
+d12 <- droplevels( subset(d9, cousin_terms != 'hawaiian'))
+
+d12$cousin_rank2 <- as.numeric(d12$cousin_terms)
+
+k4 = gam(cousin_rank2 ~ 1
+                        + jurisdiction_local
+                          + subsistence
+                            + cousin_marriage
+                              + descent
+  + s(region, bs='re') + s(family, bs='re'), family=ocat(R=4), data=d12, link='identity', method='ML')
+
+summary(k4)
+
+plot(k4, all.terms = T, select = 3)
+
+save(k4,file='mods/k4gamm.rda')
+
+# we refit the model on the sccs
+
+d13 <- droplevels( subset(d9, in_sccs == T))
+
+k5 = gam(cousin_rank ~ 1
+                        + jurisdiction_local
+                          + subsistence
+                            + cousin_marriage
+                              + descent
+  + s(region, bs='re') + s(family, bs='re'), family=ocat(R=5), data=d13, link='identity', method='ML')
+
+summary(k5)
+
+save(k5,file='mods/k5gamm.rda')
+```
+
+### pulling in
+
+```{r }
+
+load('mods/g1gamm.rda')
+load('mods/f2bgamm.rda')
+load('mods/s5bgamm.rda')
+load('mods/k1gamm.rda')
+load('mods/k4gamm.rda')
+load('mods/k5gamm.rda')
+
+est_galton <- summary(g1)$dev.expl %>% round(2)
+n_prac <- summary(f2b)$n
+est_prac <- summary(f2b)$dev.expl %>% round(2)
+n_soc <- summary(s5b)$n
+est_soc <- summary(s5b)$dev.expl %>% round(2)
+n_comb <- summary(k1)$n
+est_comb <- summary(k1)$dev.expl %>% round(2)
+n_noaloha <- summary(k4)$n
+est_noaloha <- summary(k4)$dev.expl %>% round(2)
+n_sccs <- summary(k5)$n
+est_sccs <- summary(k5)$dev.expl %>% round(2)
+
+print(kable(summary(k1)$p.table[,-4], include.rownames=F, floating=F, digits=3, caption = 'Summary of the fixed effects, Model 3', label = 'summary_comb'))
+```
+
+## Prediction plot
+
+```{r }
+# we make prediction plots for the four interesting variables from the combined model fit on everybody
+
+d9 <- d %>% filter(!is.na(jurisdiction_local),!is.na(subsistence),!is.na(cousin_marriage),!is.na(descent))
+
+# get predictions
+pred1 = predict(k1, d9, type = 'response', se.fit = T)
+
+# get pred and se
+pred1se = pred1[[2]]
+pred1 = pred1[[1]] 
+
+# get preds right
+# tidy up colnames
+colnames(pred1) = c('hawaiian', 'eskimo', 'iroquois', 'crow/omaha', 'sudanese/desc')
+# combine them with societies
+pred1 = d9 %>% select(soc_id) %>% cbind(pred1)
+# make it nice and long
+pred1 = melt(pred1, id.vars='soc_id')
+names(pred1)[names(pred1)=='variable'] = 'cousin_pred_class'
+names(pred1)[names(pred1)=='value'] = 'cousin_pred_value'
+
+# get se right (the same)
+colnames(pred1se) = c('hawaiian', 'eskimo', 'iroquois', 'crow/omaha', 'sudanese/desc')
+pred1se = d9 %>% select(soc_id) %>% cbind(pred1se)
+pred1se = melt(pred1se, id.vars='soc_id')
+names(pred1se)[names(pred1se)=='variable'] = 'cousin_pred_class'
+names(pred1se)[names(pred1se)=='value'] = 'cousin_SE_value'
+
+# combine them
+pred1 = merge(pred1,pred1se)
+
+# merge them with the dataset (if we only got predictions for one outcome, like in a binomial model, this would be this one line)
+
+# watch out that the name of the prediction is something else than the name of the actual cousin term
+pred1 = merge(d9,pred1)
+
+# aggregate over cousin marriage
+predCousinMarriage <- pred1 %>% select(soc_id,cousin_marriage,cousin_pred_class,cousin_pred_value,cousin_SE_value) %>% group_by(cousin_marriage,cousin_pred_class) %>% dplyr::summarise(mean = mean(cousin_pred_value), se = mean(cousin_SE_value))
+
+# get pos dodge and colours
+pd <- position_dodge(0.1) # move them .05 to the left and right
+# my_colours = topo.colors(5)
+my_colours = brewer.pal(5, "Set3")
+
+# make plot: dots are predictions, error bars are standard errors, aggregated across categories. labels fixed by hand.
+p1 = ggplot(predCousinMarriage, aes(x=cousin_marriage, y=mean, colour=cousin_pred_class, group=cousin_pred_class)) + 
+    geom_errorbar(aes(ymin=mean-se, ymax=mean+se), width=.1, position=pd) +
+    geom_line(position=pd, lty = 2) +
+    geom_point(position=pd, size = 3) +
+    guides(colour = F) +
+    xlab('prevalence of cousin marriage') + ylab('probability of kinship system') + scale_colour_manual(values=my_colours) +
+  ylim(0,1) +
+     scale_x_continuous(labels=c("1" = "forbidden", "2" = "some 2nd", "3" = "some 1st", "4" = "all 1st"))
+
+# the following three plots follow the same logic.
+predDescent <- pred1 %>% select(soc_id,descent,cousin_pred_class,cousin_pred_value,cousin_SE_value) %>% group_by(descent,cousin_pred_class) %>% dplyr::summarise(mean = mean(cousin_pred_value), se = mean(cousin_SE_value)) %>% filter(!is.na(descent))
+
+p2 = ggplot(predDescent, aes(x=descent, y=mean, colour=cousin_pred_class, group=cousin_pred_class)) + 
+    geom_errorbar(aes(ymin=mean-se, ymax=mean+se), width=.1, position=pd) +
+    geom_line(position=pd, lty = 2) +
+    geom_point(position=pd, size = 3) +
+    guides(colour = F) +
+    ylab('') +
+    xlab('descent: unilineal > ambilineal > bilateral') +
+    theme(axis.text.x = element_text(angle = 90, hjust = 1)) + scale_colour_manual(values=my_colours) +
+  ylim(0,1)
+
+predSubsistence <- pred1 %>% select(soc_id,subsistence,cousin_pred_class,cousin_pred_value,cousin_SE_value) %>% group_by(subsistence,cousin_pred_class) %>% dplyr::summarise(mean = mean(cousin_pred_value), se = mean(cousin_SE_value))
+
+p3 = ggplot(predSubsistence, aes(x=subsistence, y=mean, colour=cousin_pred_class, group=cousin_pred_class)) + 
+    geom_errorbar(aes(ymin=mean-se, ymax=mean+se), width=.1, position=pd) +
+    geom_line(position=pd, lty = 2) +
+    guides(colour = F) +
+    geom_point(position=pd, size = 3) +
+    xlab('main subsistence') + ylab('') + 
+    scale_colour_manual(values=my_colours) +
+    ylim(0,1) +
+    scale_x_discrete(labels=c("int_agr" = "intensive agr.", "ext_agr" = "extensive agr.", "foraging" = "foraging", "pastoralism" = "pastoralism"))
+
+predPCL <- pred1 %>% mutate(jurisdiction_local = as.factor(jurisdiction_local)) %>% select(soc_id,jurisdiction_local,cousin_pred_class,cousin_pred_value,cousin_SE_value) %>% group_by(jurisdiction_local,cousin_pred_class) %>% dplyr::summarise(mean = mean(cousin_pred_value), se = mean(cousin_SE_value))
+
+p4 = ggplot(predPCL, aes(x=jurisdiction_local, y=mean, colour=cousin_pred_class, group=cousin_pred_class)) + 
+    geom_errorbar(aes(ymin=mean-se, ymax=mean+se), width=.1, position=pd) +
+    geom_line(position=pd, lty = 2) +
+    geom_point(position=pd, size = 3) +
+    xlab('local jurisdictional hierarchy') + ylab('') + 
+    scale_colour_manual(values=my_colours) +
+    ylim(0,1) + scale_fill_continuous(guide = guide_legend()) + 
+    theme(legend.position="bottom") + 
+    guides(colour = guide_legend(override.aes = list(size=6))) + guides(colour = guide_legend(nrow = 2)) + 
+    labs(colour = 'kinship system') +
+    scale_x_discrete(labels=c("2" = "independent fam.", "3" = "extended fam.", "4" = "clan-barrios"))
+
+print(multiplot(p1,p2,p3,p4, cols = 2))
+ggsave('figs/cousin_paper_text-predfig.pdf', width = 9, height = 7)
+```
