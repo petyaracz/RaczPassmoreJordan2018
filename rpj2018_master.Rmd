@@ -7,7 +7,7 @@ output:
 
 ## Setting up
 
-```{r warning=FALSE, message=FALSE, tidy=TRUE}
+```{r settingup, warning=FALSE, message=FALSE, tidy=TRUE}
 try(setwd('~/Work/Bristol/RaczPassmoreJordan2018/'))
 
 library('dplyr') # to massage data
@@ -66,7 +66,7 @@ d_big <- d %>% filter(family %in% biggest_family)
 
 ## Map of the world: kinship systems x language family
 
-```{r width = 12, height = 6, tidy=TRUE}
+```{r worldmap, fig.width=12, fig.height=15, tidy=TRUE}
 
 # take map of the world,
 # add labels for kinship types and colour for family in the 12 biggest families
@@ -85,7 +85,7 @@ ggsave('figs/cousin_paper_text-kinfig.pdf', width = 12, height = 6)
 
 ## Three plots on kinship system x social factors
 
-```{r width=12, height=15}
+```{r kinshipXsocial, fig.width=12, fig.height=15}
 
 popMiss <- d %>% filter(is.na(log_pop_size)) %>% nrow
 popMiss <- round((popMiss / nrow(d) * 100),2)
@@ -135,7 +135,7 @@ ggsave('figs/cousin_paper_text-pracfig.pdf', width=12, height=15)
 
 ## Missing values
 
-```{r tidy=TRUE}
+```{r missingvalues, tidy=TRUE}
 soc_size <- d %>% select(subsistence,settlement,comm_size,jurisdiction,jurisdiction_local,log_pop_size) %>% na.omit %>% nrow
 
 prac_size <- d %>% select(cousin_marriage,marriage,descent) %>% na.omit %>% nrow
@@ -147,7 +147,7 @@ final_size <- d %>% select(jurisdiction_local,subsistence,cousin_marriage,descen
 
 ### specifying
 
-```{r eval=F, tidy=TRUE}
+```{r regression, eval=F, tidy=TRUE}
 # models
 
 # a model that estimates variance covered by language family and region
@@ -404,7 +404,7 @@ save(k5,file='mods/k5gamm.rda')
 
 ### pulling in
 
-```{r tidy=TRUE}
+```{r pull, tidy=TRUE}
 
 load('mods/g1gamm.rda')
 load('mods/f2bgamm.rda')
@@ -430,7 +430,7 @@ print(kable(summary(k1)$p.table[,-4], include.rownames=F, floating=F, digits=3, 
 
 ## Prediction plot
 
-```{r  width = 11, height = 7, tidy=TRUE}
+```{r prediction, width = 11, height = 7, tidy=TRUE}
 # we make prediction plots for the four interesting variables from the combined model fit on everybody
 
 d9 <- d %>% filter(!is.na(jurisdiction_local),!is.na(subsistence),!is.na(cousin_marriage),!is.na(descent))
