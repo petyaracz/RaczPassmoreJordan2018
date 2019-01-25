@@ -24,6 +24,7 @@ library('ggmap') # for map
 library('knitr')
 library('reshape2') # for melting and casting
 library('RColorBrewer') # for colours
+source('samvif.R') # for vif
 
 d <- read.csv('ea_tidy_cousin_only.csv') %>% filter(!is.na(cousin_terms)) # see rpj2018_helper.r
 mapWorld <- map_data('world', wrap=c(-25,335), ylim=c(-55,75)) # pacific centered
@@ -132,6 +133,21 @@ print(multiplot(prac1,prac2,prac3, cols = 1))
 
 ggsave('figs/cousin_paper_text-pracfig.pdf', width=12, height=15)
 ```
+
+## Capturing population size
+
+```{r capturingpopulationsize, tidy=TRUE}
+d %>%
+  summarise(r_set = cor(settlement,log_pop_size, use = "pairwise.complete.obs"),
+    r_j = cor(jurisdiction,log_pop_size, use = "pairwise.complete.obs"),
+    r_jl = cor(jurisdiction_local,log_pop_size, use = "pairwise.complete.obs"),
+    r_sub = cor(as.numeric(subsistence),log_pop_size, use = "pairwise.complete.obs"),
+    r_com = cor(comm_size,log_pop_size, use = "pairwise.complete.obs"),
+    )
+      # r_set     r_j      r_jl      r_sub     r_com
+# 1 0.4104416 0.58428 0.2133941 -0.4435946 0.5961375
+```
+
 
 ## Missing values
 
@@ -413,6 +429,13 @@ load('mods/k1gamm.rda')
 load('mods/k4gamm.rda')
 load('mods/k5gamm.rda')
 
+# multicollinearity?
+#samvif(f2b);summary(f2b) #  "the square root of the VIF for the jth covariate indicates by how much the confidence interval for β̂ j is expanded relative to uncorrelated data"-- by about 2x here, the effects survive it 
+# samvif(s5b);summary(s5b) # pastoralist effect is probably gone.
+# samvif(k1);summary(k1) # yup
+# samvif(k1)[,2] %>% sqrt %>% cbind(as.character(samvif(k1)[,1]))
+
+
 est_galton <- summary(g1)$dev.expl %>% round(2)
 n_prac <- summary(f2b)$n
 est_prac <- summary(f2b)$dev.expl %>% round(2)
@@ -495,8 +518,9 @@ p2 = ggplot(predDescent, aes(x=descent, y=mean, colour=cousin_pred_class, group=
     guides(colour = F) +
     ylab('') +
     xlab('descent: unilineal > ambilineal > bilateral') +
-    theme(axis.text.x = element_text(angle = 90, hjust = 1)) + scale_colour_manual(values=my_colours) +
-  ylim(0,1)
+    #theme(axis.text.x = element_text(angle = 90, hjust = 1)) + 
+    scale_colour_manual(values=my_colours) +
+    ylim(0,1)
 
 predSubsistence <- pred1 %>% select(soc_id,subsistence,cousin_pred_class,cousin_pred_value,cousin_SE_value) %>% group_by(subsistence,cousin_pred_class) %>% dplyr::summarise(mean = mean(cousin_pred_value), se = mean(cousin_SE_value))
 
@@ -523,9 +547,23 @@ p4 = ggplot(predPCL, aes(x=jurisdiction_local, y=mean, colour=cousin_pred_class,
     guides(colour = guide_legend(override.aes = list(size=6))) + guides(colour = guide_legend(nrow = 2)) + 
     labs(colour = 'kinship system') +
     scale_x_discrete(labels=c("2" = "independent fam.", "3" = "extended fam.", "4" = "clan-barrios"))
-pdf('figs/cousin_paper_text-predfig.pdf', width = 11, height = 7)
-print(multiplot(p1,p2,p3,p4, cols = 2))
+#pdf('figs/cousin_paper_text-predfig.pdf', width = 9, height = 7)
+#print(multiplot(p1,p2,p3,p4, cols = 2))
+#dev.off()
+
+library(gridExtra)
+get_legend<-function(myggplot){
+  tmp <- ggplot_gtable(ggplot_build(myggplot))
+  leg <- which(sapply(tmp$grobs, function(x) x$name) == "guide-box")
+  legend <- tmp$grobs[[leg]]
+  return(legend)
+}
+
+legend = get_legend(p4)
+
+p4 = p4 + theme(legend.position = 'none')
+pdf('figs/cousin_paper_text-predfig.pdf', width = 9, height = 7)
+grid.arrange(p1, p2, p3, p4, legend, ncol = 2, heights = c(1, 1, 0.2))
 dev.off()
-# ggsave('figs/cousin_paper_text-predfig.pdf', width = 11, height = 7)
 ```
 
